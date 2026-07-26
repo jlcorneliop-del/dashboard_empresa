@@ -3,8 +3,12 @@ from conexion import cargar_datos
 from indicadores import *
 from graficos import *
 
-# 1. CONFIGURACIÓN INICIAL DE PÁGINA (Siempre debe ir primero)
-st.set_page_config(page_title="Wigo Motors", layout="wide")
+# 1. CONFIGURACIÓN GERENCIAL DE PÁGINA
+st.set_page_config(
+    page_title="Informe Gerencial - Wigo Motors",
+    page_icon="📊",
+    layout="wide"
+)
 
 # 2. FUNCIÓN DE LOGIN
 def login():
@@ -14,8 +18,7 @@ def login():
     if st.session_state.autenticado:
         return True
 
-    st.title("🔒 Inicio de Sesión")
-
+    st.title("🔒 Acceso al Sistema Gerencial")
     usuario = st.text_input("Usuario")
     password = st.text_input("Contraseña", type="password")
 
@@ -28,71 +31,103 @@ def login():
 
     return False
 
-# 3. CONTROL DE ACCESO
 if not login():
-    st.stop()  # Detiene la ejecución si no ha ingresado usuario y contraseña correctos
+    st.stop()
 
 # ==============================================================================
-# DASHBOARD DE WIGO MOTORS (Solo visible después de loguearse)
+# INFORME GERENCIAL - WIGO MOTORS S.A.C.
 # ==============================================================================
 
-# Botón para cerrar sesión en la barra lateral
-with st.sidebar:
-    st.write("---")
-    if st.button("🚪 Cerrar Sesión"):
-        st.session_state.autenticado = False
-        st.rerun()
+df = cargar_datos()
 
-df = cargar_datos()  # UTILIZANDO LA FUNCIÓN QUE NOS DEVUELVE EL DATAFRAME (DF)
+# ------------------------------------------------------------------------------
+# FILTROS GERENCIALES (BARRA LATERAL)
+# ------------------------------------------------------------------------------
+st.sidebar.title("📌 Filtros de Control")
 
-st.title("WIGO MOTORS S.A.C.")                      
-st.subheader("Buscador comercial") 
+marcas = ["Todas"] + list(df["marca"].dropna().unique())
+marca_sel = st.sidebar.selectbox("Marca:", marcas)
 
-st.sidebar.header("Buscador")
-tipo_busqueda = st.sidebar.selectbox("Seleccione tipo de búsqueda", ["Marca", "Asesor comercial", "Sede"])   
+sedes = ["Todas"] + list(df["tienda"].dropna().unique())
+sede_sel = st.sidebar.selectbox("Sede / Tienda:", sedes)
 
-df_filtrado = df.copy()  # Haciendo una copia del DataFrame 
+asesores = ["Todos"] + list(df["asesor_comercial"].dropna().unique())
+asesor_sel = st.sidebar.selectbox("Asesor Comercial:", asesores)
 
+precio_min = float(df["precio_venta"].min())
+precio_max = float(df["precio_venta"].max())
 
-# FILTRO POR MARCA / ASESOR / SEDE:
+rango_precio = st.sidebar.slider(
+    "Rango Presupuestario (S/):",
+    min_value=precio_min,
+    max_value=precio_max,
+    value=(precio_min, precio_max),
+    step=1000.0,
+    format="S/%d"
+)
 
-if tipo_busqueda == "Marca":
-    valor = st.sidebar.selectbox("Seleccionar marca", df["marca"].unique())
-    df_filtrado = df[df["marca"] == valor]
-    
-elif tipo_busqueda == "Asesor comercial":
-    valor = st.sidebar.selectbox("Seleccionar asesor", df["asesor_comercial"].unique())
-    df_filtrado = df[df["asesor_comercial"] == valor]
-    
-elif tipo_busqueda == "Sede":
-    valor = st.sidebar.selectbox("Seleccionar sede", df["tienda"].unique())
-    df_filtrado = df[df["tienda"] == valor]
+st.sidebar.write("---")
+if st.sidebar.button("🚪 Cerrar Sesión"):
+    st.session_state.autenticado = False
+    st.rerun()
 
+# Lógica de Filtrado
+df_filtrado = df.copy()
 
-# MOSTRAR RESULTADOS (TABLA):
+if marca_sel != "Todas":
+    df_filtrado = df_filtrado[df_filtrado["marca"] == marca_sel]
 
-st.success(f"Registros encontrados: {len(df_filtrado)}")
-st.dataframe(df_filtrado)
+if sede_sel != "Todas":
+    df_filtrado = df_filtrado[df_filtrado["tienda"] == sede_sel]
 
+if asesor_sel != "Todos":
+    df_filtrado = df_filtrado[df_filtrado["asesor_comercial"] == asesor_sel]
 
-# INDICADORES GENERALES: 
+df_filtrado = df_filtrado[
+    (df_filtrado["precio_venta"] >= rango_precio[0]) & 
+    (df_filtrado["precio_venta"] <= rango_precio[1])
+]
 
-st.subheader("Indicadores:")
+# ------------------------------------------------------------------------------
+# ENCABEZADO DE INFORME EJECUTIVO
+# ------------------------------------------------------------------------------
+st.title("🏛️ WIGO MOTORS S.A.C.")
+st.caption("Reporte Ejecutivo de Desempeño Comercial y Ventas")
 
-c1, c2, c3, c4 = st.columns(4)        
+# RESUMEN METRICO (TARJETAS GERENCIALES)
+st.markdown("### 📈 Indicadores Clave de Rendimiento (KPIs)")
+kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
 
-c1.metric("Precio Total", f"S/{precio_total(df_filtrado):,.2f}")          
-c2.metric("Unidades vendidas", f"{unidades_vendidas(df_filtrado)}")                
-c3.metric("Precio promedio", f"S/{precio_promedio(df_filtrado):,.2f}")     
-c4.metric("Operaciones", operaciones(df_filtrado))                                          
+kpi1.metric("Ingresos Totales", f"S/ {precio_total(df_filtrado):,.2f}")
+kpi2.metric("Unidades Vendidas", f"{unidades_vendidas(df_filtrado)} u.")
+kpi3.metric("Ticket Promedio", f"S/ {precio_promedio(df_filtrado):,.2f}")
+kpi4.metric("Operaciones", f"{operaciones(df_filtrado)}")
+kpi5.metric("Precio Máx. Venta", f"S/ {precio_maximo(df_filtrado):,.2f}")
 
-c5, c6, c7, c8 = st.columns(4)  
+st.write("---")
 
-c5.metric("Precio más alto", f"S/{precio_maximo(df_filtrado):,.2f}")
-c6.metric("Precio más bajo", f"S/{precio_minimo(df_filtrado):,.2f}")
+# ------------------------------------------------------------------------------
+# PESTAÑAS DEL INFORME (TABS)
+# ------------------------------------------------------------------------------
+tab1, tab2, tab3 = st.tabs(["📊 Visión General", "🎯 Análisis Comercial", "📋 Registro de Datos"])
 
+with tab1:
+    st.subheader("Resumen de Desempeño Operativo")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.plotly_chart(grafico_ventas(df_filtrado), use_container_width=True)
+    with col2:
+        st.plotly_chart(grafico_sedes(df_filtrado), use_container_width=True)
 
-# GRÁFICOS - DASHBOARD 
+with tab2:
+    st.subheader("Análisis de Precios y Financiamiento")
+    col3, col4 = st.columns(2)
+    with col3:
+        st.plotly_chart(grafico_promedio(df_filtrado), use_container_width=True)
+    with col4:
+        st.plotly_chart(grafico_metodo_pago(df_filtrado), use_container_width=True)
 
-st.plotly_chart(grafico_ventas(df_filtrado))  
-st.plotly_chart(grafico_promedio(df_filtrado))
+with tab3:
+    st.subheader("Detalle Consolidado de Ventas")
+    st.info(f"Se muestran **{len(df_filtrado)}** registros coincidentes con los criterios seleccionados.")
+    st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
